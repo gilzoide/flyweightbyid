@@ -1,0 +1,19 @@
+{
+	"name": "flyweightbyid",
+	"authors": [
+		"gilzoide"
+	],
+	"description": "Flyweight implementation based on explicit named ids",
+	"license": "public license",
+	"configurations": [
+		{
+			"name": "library"
+		},
+		{
+			"name": "betterC",
+			"buildOptions": [
+				"betterC"
+			]
+		}
+	]
+}
