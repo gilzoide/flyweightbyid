@@ -1,36 +1,36 @@
 import std.traits : isCallable;
 
-struct Flyweight(T, string[] names, alias makeFunc, alias disposeFunc)
+struct Flyweight(T, alias makeFunc, alias disposeFunc, alias names)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
-    /// The ID type, suitable for indexing arrays
-    alias ID = uint;
-    //mixin("enum ID : uint {"
-        //~ 
-    //enum ID2
-    //{
-        //static foreach (name; names)
-        //{
-            //mixin(name ~ ",");
-        //}
-    //}
-    /// Sentinel value for a surely unknown ID
-    enum unknownID = ID.max;
-    /// Verify if ID is a known object ID
-    static bool isKnownID(ID id)
+    import std.algorithm : map;
+    import std.string : join;
+    mixin("enum ID : uint "
+        ~ "{"
+            ~ names.map!((string n) { return n ~ ","; }).join(" ")
+            ~ "invalid"
+        ~ "}"
+    );
+    /// Verify if ID is a valid object ID
+    static bool isValidID(ID id)
     {
         return id < names.length;
+    }
+    /// Verify if this is a valid Flyweight object
+    bool isValid() const
+    {
+        return isValidID(id);
     }
 
     /// Pointer to the object data
     T* object = null;
     /// Object ID, used for reference counting
-    private ID id = unknownID;
+    private ID id = ID.invalid;
     alias object this;
 
     ~this()
     {
-        if (isKnownID(id))
+        if (isValid)
         {
             unref(id);
         }
@@ -40,7 +40,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     static private uint[names.length] referenceCounts = 0;
 
     static Flyweight get(ID id)
-    in { assert(isKnownID(id)); }
+    in { assert(isValidID(id)); }
     out { assert(referenceCounts[id] > 0); }
     do
     {
@@ -57,7 +57,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     }
 
     static void unref(ID id)
-    in { assert(isKnownID(id)); }
+    in { assert(isValidID(id)); }
     do
     {
         if (referenceCounts[id] > 0)
@@ -75,7 +75,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     }
 
     static bool isLoaded(ID id)
-    in { assert(isKnownID(id)); }
+    in { assert(isValidID(id)); }
     do
     {
         return referenceCounts[id] > 0;
@@ -84,13 +84,17 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     static foreach (i, name; names)
     {
         import std.format : format;
-        mixin(format!"static Flyweight %s() { return get(%s); }"(name, i));
+        mixin(format!"static Flyweight %s() { return get(ID.%s); }"(name, name));
     }
 }
 
 version (unittest)
 {
-    enum string[] names = ["one", "two", "three"];
+    enum names = [
+        "one",
+        "two",
+        "three",
+    ];
     string* makeName(uint id)
     {
         return &names[id];
@@ -104,7 +108,9 @@ version (unittest)
 
 unittest
 {
-    alias NameFlyweight = Flyweight!(string, names, makeName, disposeName);
+    alias NameFlyweight = Flyweight!(string, makeName, disposeName, names);
+    NameFlyweight invalid;
+    assert(!invalid.isValid);
 
     {
         assert(*NameFlyweight.one == "one");
@@ -116,13 +122,13 @@ unittest
         const auto one1 = NameFlyweight.one;
         const auto one2 = NameFlyweight.one;
         const auto one3 = NameFlyweight.one;
-        assert(NameFlyweight.isLoaded(0));
+        assert(NameFlyweight.isLoaded(NameFlyweight.ID.one));
         assert(one1.object is one2.object);
         assert(one2.object is one3.object);
         assert(one1.object is one3.object);
     }
 
-    assert(!NameFlyweight.isLoaded(0));
-    assert(!NameFlyweight.isLoaded(1));
-    assert(!NameFlyweight.isLoaded(2));
+    assert(!NameFlyweight.isLoaded(NameFlyweight.ID.one));
+    assert(!NameFlyweight.isLoaded(NameFlyweight.ID.two));
+    assert(!NameFlyweight.isLoaded(NameFlyweight.ID.three));
 }

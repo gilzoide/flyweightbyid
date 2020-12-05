@@ -1,5 +1,6 @@
 .dub/
 build/
+/*flyweightbyid*
 *.a
 *.so
 *.exe
