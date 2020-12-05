@@ -1,9 +1,27 @@
-import std.traits : isCallable;
+import std.traits : isCallable, EnumMembers;
 
-struct Flyweight(T, alias makeFunc, alias disposeFunc, alias names)
+struct Flyweight(T, alias makeFunc, alias disposeFunc, Names...)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
     import std.algorithm : map;
+    static if (Names.length == 1 && !is(typeof(Names[0]) == string))
+    {
+        static if (is(Names[0] == enum))
+        {
+            import std.array : array;
+            import std.conv : to;
+            private enum names = [EnumMembers!(Names[0])].map!(to!string).array;
+        }
+        else
+        {
+            private alias names = Names[0];
+        }
+    }
+    else
+    {
+        private static immutable names = [Names];
+    }
+
     import std.string : join;
     mixin("enum ID : uint "
         ~ "{"
@@ -97,7 +115,7 @@ version (unittest)
     ];
     string* makeName(uint id)
     {
-        return &names[id];
+        return id < names.length ? &names[id] : null;
     }
     void disposeName(string* name)
     {
@@ -108,6 +126,7 @@ version (unittest)
 
 unittest
 {
+    // names from string[]
     alias NameFlyweight = Flyweight!(string, makeName, disposeName, names);
     NameFlyweight invalid;
     assert(!invalid.isValid);
@@ -131,4 +150,41 @@ unittest
     assert(!NameFlyweight.isLoaded(NameFlyweight.ID.one));
     assert(!NameFlyweight.isLoaded(NameFlyweight.ID.two));
     assert(!NameFlyweight.isLoaded(NameFlyweight.ID.three));
+}
+
+unittest
+{
+    // names from enum members
+    enum ABC { A, B, C, D, None }
+    alias ABCFlyweight = Flyweight!(string, makeName, disposeName, ABC);
+    assert(__traits(hasMember, ABCFlyweight, "A"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "A"));
+    assert(__traits(hasMember, ABCFlyweight, "B"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "B"));
+    assert(__traits(hasMember, ABCFlyweight, "C"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "C"));
+    assert(__traits(hasMember, ABCFlyweight, "D"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "D"));
+    assert(__traits(hasMember, ABCFlyweight, "None"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "None"));
+}
+
+unittest
+{
+    // names passed directly
+    alias ABCFlyweight = Flyweight!(string, makeName, disposeName, "A", "B", "C", "D", "None");
+    assert(__traits(hasMember, ABCFlyweight, "A"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "A"));
+    assert(__traits(hasMember, ABCFlyweight, "B"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "B"));
+    assert(__traits(hasMember, ABCFlyweight, "C"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "C"));
+    assert(__traits(hasMember, ABCFlyweight, "D"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "D"));
+    assert(__traits(hasMember, ABCFlyweight, "None"));
+    assert(__traits(hasMember, ABCFlyweight.ID, "None"));
+
+    alias SingletonFlyweight = Flyweight!(string, makeName, disposeName, "instance");
+    assert(__traits(hasMember, SingletonFlyweight, "instance"));
+    assert(__traits(hasMember, SingletonFlyweight.ID, "instance"));
 }
