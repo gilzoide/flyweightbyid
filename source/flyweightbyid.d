@@ -40,8 +40,8 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         return isValidID(id);
     }
 
-    /// Pointer to the object data
-    T* object = null;
+    /// Object data
+    T object;
     /// Object ID, used for reference counting
     private ID id = ID.invalid;
     alias object this;
@@ -54,7 +54,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
-    static private T*[names.length] knownObjects = null;
+    static private T[names.length] knownObjects;
     static private uint[names.length] referenceCounts = 0;
 
     static Flyweight get(ID id)
@@ -87,7 +87,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
                 {
                     disposeFunc(knownObjects[id]);
                 }
-                knownObjects[id] = null;
+                knownObjects[id] = T.init;
             }
         }
     }
@@ -113,14 +113,14 @@ version (unittest)
         "two",
         "three",
     ];
-    string* makeName(uint id)
+    string makeName(uint id)
     {
-        return id < names.length ? &names[id] : null;
+        return id < names.length ? names[id] : null;
     }
-    void disposeName(string* name)
+    void disposeName(string name)
     {
         import std.stdio : writeln;
-        writeln("Bye bye ", *name);
+        writeln("Bye bye ", name);
     }
 }
 
@@ -132,9 +132,9 @@ unittest
     assert(!invalid.isValid);
 
     {
-        assert(*NameFlyweight.one == "one");
-        assert(*NameFlyweight.two == "two");
-        assert(*NameFlyweight.three == "three");
+        assert(NameFlyweight.one == "one");
+        assert(NameFlyweight.two == "two");
+        assert(NameFlyweight.three == "three");
     }
 
     {
