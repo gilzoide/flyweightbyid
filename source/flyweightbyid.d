@@ -83,11 +83,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
             referenceCounts[id]--;
             if (referenceCounts[id] == 0)
             {
-                if (knownObjects[id])
-                {
-                    disposeFunc(knownObjects[id]);
-                }
-                knownObjects[id] = T.init;
+                disposeFunc(knownObjects[id]);
             }
         }
     }
@@ -117,10 +113,11 @@ version (unittest)
     {
         return id < names.length ? names[id] : null;
     }
-    void disposeName(string name)
+    void disposeName(ref string name)
     {
         import std.stdio : writeln;
         writeln("Bye bye ", name);
+        name = null;
     }
 }
 
