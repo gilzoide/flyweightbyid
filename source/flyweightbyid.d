@@ -1,31 +1,46 @@
-import std.traits : isCallable, EnumMembers;
+import std.traits : isCallable;
+
+template joinNames(string[] names)
+{
+    private string _joinNames(string[] names)
+    {
+        string result;
+        foreach (n; names)
+        {
+            result ~= n ~ ", ";
+        }
+        return result;
+    }
+
+    enum joinNames = _joinNames(names);
+}
 
 struct Flyweight(T, alias makeFunc, alias disposeFunc, Names...)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
-    import std.algorithm : map;
     static if (Names.length == 1 && !is(typeof(Names[0]) == string))
     {
         static if (is(Names[0] == enum))
         {
+            import std.algorithm : map;
             import std.array : array;
             import std.conv : to;
-            private enum names = [EnumMembers!(Names[0])].map!(to!string).array;
+            import std.traits : EnumMembers;
+            private enum string[] names = [EnumMembers!(Names[0])].map!(to!string).array;
         }
         else
         {
-            private alias names = Names[0];
+            private enum string[] names = Names[0];
         }
     }
     else
     {
-        private static immutable names = [Names];
+        private enum string[] names = [Names];
     }
 
-    import std.string : join;
     mixin("enum ID : uint "
         ~ "{"
-            ~ names.map!((string n) { return n ~ ","; }).join(" ")
+            ~ joinNames!(names)
             ~ "invalid"
         ~ "}"
     );
@@ -95,10 +110,9 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         return referenceCounts[id] > 0;
     }
 
-    static foreach (i, name; names)
+    static foreach (name; names)
     {
-        import std.format : format;
-        mixin(format!"static Flyweight %s() { return get(ID.%s); }"(name, name));
+        mixin("static Flyweight " ~ name ~ "() { return get(ID." ~ name ~ "); }");
     }
 }
 
