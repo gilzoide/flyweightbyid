@@ -61,6 +61,29 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     private ID id = ID.invalid;
     alias object this;
 
+    private this(const ID id, const T object)
+    {
+        this.id = id;
+        this.object = object;
+    }
+
+    this(ref return scope inout Flyweight other)
+    {
+        this.id = other.id;
+        this.object = other.object;
+        if (isValid)
+        {
+            referenceCounts[id]++;
+        }
+    }
+    this(this)
+    {
+        if (isValid)
+        {
+            referenceCounts[id]++;
+        }
+    }
+
     ~this()
     {
         if (isValid)
@@ -82,11 +105,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
             knownObjects[id] = makeFunc(id);
         }
         referenceCounts[id]++;
-        typeof(return) obj = {
-            id: id,
-            object: knownObjects[id],
-        };
-        return obj;
+        return Flyweight(id, knownObjects[id]);
     }
 
     static void unref(ID id)
