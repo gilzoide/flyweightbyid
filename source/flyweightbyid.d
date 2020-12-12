@@ -1,6 +1,6 @@
 import std.traits : isCallable;
 
-template joinNames(string[] names)
+private template joinNames(string[] names)
 {
     private string _joinNames(string[] names)
     {
@@ -76,11 +76,14 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
             referenceCounts[id]++;
         }
     }
-    this(this)
+    version (GNU)
     {
-        if (isValid)
+        this(this)
         {
-            referenceCounts[id]++;
+            if (isValid)
+            {
+                referenceCounts[id]++;
+            }
         }
     }
 
