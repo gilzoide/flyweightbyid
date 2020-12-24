@@ -3,7 +3,7 @@
 	"authors": [
 		"gilzoide"
 	],
-	"description": "Flyweight implementation based on explicit named ids",
+	"description": "Flyweight template based on explicitly named ids compatible with betterC",
 	"license": "public license",
 	"configurations": [
 		{

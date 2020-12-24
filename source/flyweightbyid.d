@@ -11,24 +11,34 @@ enum FlyweightOptions
     noReferenceCount = 1 << 1,
 }
 
-struct Flyweight(T, alias makeFunc, alias disposeFunc, alias _names, const FlyweightOptions options = FlyweightOptions.none)
+/**
+ * Flyweight template.
+ *
+ * Params:
+ *   T = Instance type
+ *   makeFunc = Callable that receives ID as argument and returns `T`
+ *   disposeFunc = Callable that receives `ref T` instance to unload it
+ *   idNames = Enum or string[] with known IDs
+ *   options = Flyweight options
+ */
+struct Flyweight(T, alias makeFunc, alias disposeFunc, alias idNames, const FlyweightOptions options = FlyweightOptions.none)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
-    static if (is(_names == enum))
+    static if (is(idNames == enum))
     {
         import std.algorithm : map;
         import std.array : array;
         import std.conv : to;
         import std.traits : EnumMembers;
-        private enum string[] names = [EnumMembers!(_names)].map!(to!string).array;
+        private enum string[] names = [EnumMembers!(idNames)].map!(to!string).array;
     }
-    else static if (is(typeof(_names) == string))
+    else static if (is(typeof(idNames) == string))
     {
-        private enum string[] names = [_names];
+        private enum string[] names = [idNames];
     }
     else
     {
-        private enum string[] names = _names;
+        private enum string[] names = idNames;
     }
     private enum gshared = options & FlyweightOptions.gshared;
     private enum shouldCountReferences = !(options & FlyweightOptions.noReferenceCount);
@@ -57,7 +67,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     alias object this;
 
     /// Private so that Flyweight instances with valid IDs are created by `get` and copy constructors only.
-    private this(const ID id, const T object)
+    private this(const ID id, T object)
     {
         this.id = id;
         this.object = object;
@@ -97,7 +107,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     static if (shouldCountReferences)
     {
         /// Copy constructor with automatic reference counting.
-        this(ref return scope inout Flyweight other)
+        this(ref return scope inout Flyweight other) inout
         {
             this.id = other.id;
             this.object = other.object;
@@ -207,7 +217,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     static void unloadAll()
     out {
         import std.traits : EnumMembers;
-        foreach (id; EnumMembers!ID)
+        foreach (id; EnumMembers!(ID)[0 .. $-1])
         {
             assert(!isLoaded(id));
         }
@@ -215,7 +225,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     do
     {
         import std.traits : EnumMembers;
-        foreach (id; EnumMembers!ID)
+        foreach (id; EnumMembers!(ID)[0 .. $-1])
         {
             unload(id);
         }
@@ -360,4 +370,79 @@ unittest
     auto a = ABCFlyweight.A;
     ABCFlyweight.unload(ABCFlyweight.ID.A);
     assert(!ABCFlyweight.isLoaded(ABCFlyweight.ID.A));
+    ABCFlyweight.unloadAll();
+}
+
+version (unittest)
+{
+    // README example
+    import flyweightbyid;
+
+    // Some file names that should be loaded only once
+    enum imageFileNames = [
+        "img1.png",
+        "subdir/img2.png",
+    ];
+    // Image struct, with a pointer to the data, dimensions, member functions, etc...
+    struct Image {
+        void draw() const
+        {
+            // ...
+        }
+        // ...
+    }
+
+    // Function that loads an Image from file
+    Image* loadImage(uint id)
+    {
+        auto filename = imageFileNames[id];
+        Image* img = new Image;
+        // ...
+        return img;
+    }
+    // Function to unload the images
+    void unloadImage(ref Image* img)
+    {
+        // ...
+        destroy(img);
+    }
+
+    alias ImageFlyweight = Flyweight!(Image*, loadImage, unloadImage, imageFileNames /+, FlyweightOptions.none /+ (the default) +/ +/);
+}
+unittest
+{
+    {
+        // `img1_png` is an alias for getting the "img1.png" instance
+        // and is constructed by calling `loadImage(0)`
+        // Notice how invalid identifier characters are replaced by underscores
+        ImageFlyweight image1 = ImageFlyweight.img1_png;
+        assert(ImageFlyweight.isLoaded(ImageFlyweight.ID.img1_png));
+
+        // ImageFlyweight instance is a proxy (by means of `alias this`)
+        // for the loaded `Image*` instance, so member functions, fields and
+        // others work like expected
+        image1.draw();
+
+        // If `FlyweightOptions.noReferenceCount` is NOT passed to template (default),
+        // references are automatically counted and content is unloaded if reference
+        // count reaches 0. Pass them by value for automatic reference counting
+        ImageFlyweight also_image1 = image1;
+
+        // img1_png gets unloaded
+    }
+    assert(!ImageFlyweight.isLoaded(ImageFlyweight.ID.img1_png));
+
+    // `image2` is constructed by `loadImage(1)`
+    auto image2 = ImageFlyweight.subdir_img2_png;
+    // `also_image2` contains the same instance, as it is already loaded
+    auto also_image2 = ImageFlyweight.subdir_img2_png;
+    assert(image2 is also_image2);
+
+    // Its s possible to manually unload one or all instances, be careful to not access them afterwards!
+    ImageFlyweight.unload(ImageFlyweight.ID.subdir_img2_png);
+    ImageFlyweight.unloadAll();
+    // It is safe to call unload more than once, so when `image2` and `also_image2`
+    // are destructed, nothing will happen
+    assert(!ImageFlyweight.isLoaded(ImageFlyweight.ID.img1_png));
+    assert(!ImageFlyweight.isLoaded(ImageFlyweight.ID.subdir_img2_png));
 }
