@@ -55,10 +55,10 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         return isValidID(id);
     }
 
-    /// Object data
-    T object;
     /// Object ID, used for reference counting
     private ID id = ID.invalid;
+    /// Object data
+    T object;
     alias object this;
 
     private this(const ID id, const T object)
@@ -73,7 +73,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         this.object = other.object;
         if (isValid)
         {
-            referenceCounts[id]++;
+            incref(id);
         }
     }
     version (GNU)
@@ -82,7 +82,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         {
             if (isValid)
             {
-                referenceCounts[id]++;
+                incref(id);
             }
         }
     }
@@ -107,8 +107,16 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         {
             knownObjects[id] = makeFunc(id);
         }
-        referenceCounts[id]++;
+        incref(id);
         return Flyweight(id, knownObjects[id]);
+    }
+
+    static void incref(ID id)
+    in { assert(isValidID(id)); }
+    out { assert(referenceCounts[id] > 0); }
+    do
+    {
+        referenceCounts[id]++;
     }
 
     static void unref(ID id)
