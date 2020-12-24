@@ -6,6 +6,10 @@ Uses automatic reference counting via copy constructors/post-blits and destructo
 
 Loading and unloading of instances is fully customizable by passing the right callables to template.
 
+It is available as a [DUB package](https://code.dlang.org/packages/flyweightbyid)
+and may be used directly as a [Meson subproject](https://mesonbuild.com/Subprojects.html)
+or [wrap](https://mesonbuild.com/Wrap-dependency-system-manual.html).
+
 
 ## Usage
 ```d
