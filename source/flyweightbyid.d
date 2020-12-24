@@ -39,6 +39,7 @@ enum FlyweightOptions
 {
     none = 0,
     gshared = 1 << 0,
+    noReferenceCount = 1 << 1,
 }
 
 struct Flyweight(T, alias makeFunc, alias disposeFunc, alias _names, const FlyweightOptions options = FlyweightOptions.none)
@@ -60,8 +61,10 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     {
         private enum string[] names = _names;
     }
+    private enum gshared = options & FlyweightOptions.gshared;
+    private enum shouldCountReferences = !(options & FlyweightOptions.noReferenceCount);
 
-    mixin("enum ID : uint "
+    mixin("enum ID : uint"
         ~ "{"
             ~ joinNames!(names)
             ~ "invalid"
@@ -90,85 +93,150 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         this.object = object;
     }
 
-    this(ref return scope inout Flyweight other)
+    static if (gshared)
     {
-        this.id = other.id;
-        this.object = other.object;
-        if (isValid)
+        __gshared private T[names.length] knownObjects;
+        static if (shouldCountReferences)
         {
-            incref(id);
+            __gshared private uint[names.length] referenceCounts = 0;
+        }
+        else
+        {
+            __gshared private bool[names.length] loadedFlags = false;
         }
     }
-    version (GNU)
+    else
     {
-        this(this)
+        static private T[names.length] knownObjects;
+        static if (shouldCountReferences)
         {
+            static private uint[names.length] referenceCounts = 0;
+        }
+        else
+        {
+            static private bool[names.length] loadedFlags = false;
+        }
+    }
+
+    static if (shouldCountReferences)
+    {
+        /// Copy constructor with automatic reference counting.
+        this(ref return scope inout Flyweight other)
+        {
+            this.id = other.id;
+            this.object = other.object;
             if (isValid)
             {
                 incref(id);
             }
         }
-    }
 
-    ~this()
-    {
-        if (isValid)
+        version (D_BetterC) {}
+        else
         {
-            unref(id);
-        }
-    }
-
-    static if (options & FlyweightOptions.gshared)
-    {
-        __gshared private T[names.length] knownObjects;
-        __gshared private uint[names.length] referenceCounts = 0;
-    }
-    else
-    {
-        static private T[names.length] knownObjects;
-        static private uint[names.length] referenceCounts = 0;
-    }
-
-    static Flyweight get(ID id)
-    in { assert(isValidID(id)); }
-    out { assert(referenceCounts[id] > 0); }
-    do
-    {
-        if (referenceCounts[id] == 0)
-        {
-            knownObjects[id] = makeFunc(id);
-        }
-        incref(id);
-        return Flyweight(id, knownObjects[id]);
-    }
-
-    static void incref(ID id)
-    in { assert(isValidID(id)); }
-    out { assert(referenceCounts[id] > 0); }
-    do
-    {
-        referenceCounts[id]++;
-    }
-
-    static void unref(ID id)
-    in { assert(isValidID(id)); }
-    do
-    {
-        if (referenceCounts[id] > 0)
-        {
-            referenceCounts[id]--;
-            if (referenceCounts[id] == 0)
+            /// Post-blit with automatic reference counting.
+            this(this) @nogc nothrow
             {
-                disposeFunc(knownObjects[id]);
+                if (isValid)
+                {
+                    incref(id);
+                }
+            }
+        }
+
+        /// Destructor with automatic reference counting.
+        ~this()
+        {
+            if (isValid)
+            {
+                unref(id);
+            }
+        }
+
+        static void incref(ID id) @nogc nothrow
+        in { assert(isValidID(id)); }
+        out { assert(referenceCounts[id] > 0); }
+        do
+        {
+            referenceCounts[id]++;
+        }
+
+        static void unref(ID id)
+        in { assert(isValidID(id)); }
+        do
+        {
+            if (isLoaded(id))
+            {
+                referenceCounts[id]--;
+                if (referenceCounts[id] == 0)
+                {
+                    disposeFunc(knownObjects[id]);
+                }
             }
         }
     }
 
-    static bool isLoaded(ID id)
+    static Flyweight get(ID id)
+    in { assert(isValidID(id)); }
+    out { assert(isLoaded(id)); }
+    do
+    {
+        if (!isLoaded(id))
+        {
+            knownObjects[id] = makeFunc(id);
+            static if (!shouldCountReferences) loadedFlags[id] = true;
+        }
+        static if (shouldCountReferences) incref(id);
+        return Flyweight(id, knownObjects[id]);
+    }
+
+    static bool isLoaded(ID id) @nogc nothrow
     in { assert(isValidID(id)); }
     do
     {
-        return referenceCounts[id] > 0;
+        static if (shouldCountReferences)
+        {
+            return referenceCounts[id] > 0;
+        }
+        else
+        {
+            return loadedFlags[id];
+        }
+    }
+
+    static void unload(ID id)
+    in { assert(isValidID(id)); }
+    do
+    {
+        if (isLoaded(id))
+        {
+            disposeFunc(knownObjects[id]);
+            static if (shouldCountReferences)
+            {
+                referenceCounts[id] = 0;
+            }
+            else
+            {
+                loadedFlags[id] = false;
+            }
+        }
+    }
+
+    static void unloadAll()
+    out {
+        import std.traits : EnumMembers;
+        foreach (id; EnumMembers!ID)
+        {
+            assert(!isLoaded(id));
+        }
+    }
+    do
+    {
+        import std.traits : EnumMembers;
+        foreach (id; EnumMembers!ID)
+        {
+            unload(id);
+        }
     }
 
     static foreach (name; names)
@@ -243,19 +311,7 @@ unittest
 
 unittest
 {
-    // names passed directly
-    alias ABCFlyweight = Flyweight!(string, makeName, disposeName, ["A", "B", "C", "D", "None"]);
-    assert(__traits(hasMember, ABCFlyweight, "A"));
-    assert(__traits(hasMember, ABCFlyweight.ID, "A"));
-    assert(__traits(hasMember, ABCFlyweight, "B"));
-    assert(__traits(hasMember, ABCFlyweight.ID, "B"));
-    assert(__traits(hasMember, ABCFlyweight, "C"));
-    assert(__traits(hasMember, ABCFlyweight.ID, "C"));
-    assert(__traits(hasMember, ABCFlyweight, "D"));
-    assert(__traits(hasMember, ABCFlyweight.ID, "D"));
-    assert(__traits(hasMember, ABCFlyweight, "None"));
-    assert(__traits(hasMember, ABCFlyweight.ID, "None"));
-
+    // name passed directly
     alias SingletonFlyweight = Flyweight!(string, makeName, disposeName, "instance", FlyweightOptions.gshared);
     assert(__traits(hasMember, SingletonFlyweight, "instance"));
     assert(__traits(hasMember, SingletonFlyweight.ID, "instance"));
@@ -263,7 +319,7 @@ unittest
 
 unittest
 {
-    // names with invalid identifier chars
+    // names with invalid enum identifiers
     alias MyFlyweight = Flyweight!(string, makeName, disposeName, ["First ID", "Second!", "123"]);
     assert(__traits(hasMember, MyFlyweight, "First_ID"));
     assert(__traits(hasMember, MyFlyweight.ID, "First_ID"));
@@ -271,4 +327,19 @@ unittest
     assert(__traits(hasMember, MyFlyweight.ID, "Second_"));
     assert(__traits(hasMember, MyFlyweight, "_123"));
     assert(__traits(hasMember, MyFlyweight.ID, "_123"));
+}
+
+unittest
+{
+    // no reference counting
+    alias ABCFlyweight = Flyweight!(string, makeName, disposeName, ["A", "B", "C"], FlyweightOptions.noReferenceCount);
+    {
+        auto a = ABCFlyweight.A;
+        assert(ABCFlyweight.isLoaded(ABCFlyweight.ID.A));
+    }
+    assert(ABCFlyweight.isLoaded(ABCFlyweight.ID.A));
+    assert(!ABCFlyweight.isLoaded(ABCFlyweight.ID.B));
+    auto a = ABCFlyweight.A;
+    ABCFlyweight.unload(ABCFlyweight.ID.A);
+    assert(!ABCFlyweight.isLoaded(ABCFlyweight.ID.A));
 }
