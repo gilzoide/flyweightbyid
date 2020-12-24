@@ -95,8 +95,16 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
-    static private T[names.length] knownObjects;
-    static private uint[names.length] referenceCounts = 0;
+    version (GlobalStorage)
+    {
+        __gshared private T[names.length] knownObjects;
+        __gshared private uint[names.length] referenceCounts = 0;
+    }
+    else
+    {
+        static private T[names.length] knownObjects;
+        static private uint[names.length] referenceCounts = 0;
+    }
 
     static Flyweight get(ID id)
     in { assert(isValidID(id)); }
