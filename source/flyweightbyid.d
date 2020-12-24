@@ -1,44 +1,13 @@
 import std.traits : isCallable;
 
-private template normalizeName(string name)
-{
-    private string _normalizeName()
-    {
-        import std.ascii : isAlphaNum, isDigit;
-        string result;
-        foreach (c; name)
-        {
-            result ~= (isAlphaNum(c) || c == '_') ? c : '_';
-        }
-        if (isDigit(result[0]))
-        {
-            result = '_' ~ result;
-        }
-        return result;
-    }
-
-    enum normalizeName = _normalizeName();
-}
-
-private template joinNames(string[] names)
-{
-    private string _joinNames()
-    {
-        string result;
-        static foreach (n; names)
-        {
-            result ~= normalizeName!n ~ ", ";
-        }
-        return result;
-    }
-
-    enum joinNames = _joinNames();
-}
-
+/// Options for Flyweight instances.
 enum FlyweightOptions
 {
+    /// Default options: Thread local storage, automatic reference counting.
     none = 0,
+    /// Use global storage instead of thread local storage.
     gshared = 1 << 0,
+    /// Don't count references.
     noReferenceCount = 1 << 1,
 }
 
@@ -87,6 +56,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     T object;
     alias object this;
 
+    /// Private so that Flyweight instances with valid IDs are created by `get` and copy constructors only.
     private this(const ID id, const T object)
     {
         this.id = id;
@@ -95,25 +65,31 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
 
     static if (gshared)
     {
+        /// Global array of known objects.
         __gshared private T[names.length] knownObjects;
         static if (shouldCountReferences)
         {
+            /// Global array of reference counts.
             __gshared private uint[names.length] referenceCounts = 0;
         }
         else
         {
+            /// Global array of booleans for marking loaded objects.
             __gshared private bool[names.length] loadedFlags = false;
         }
     }
     else
     {
+        /// Thread local array of known objects.
         static private T[names.length] knownObjects;
         static if (shouldCountReferences)
         {
+            /// Thread local array of reference counts.
             static private uint[names.length] referenceCounts = 0;
         }
         else
         {
+            /// Thread local array of booleans for marking loaded objects.
             static private bool[names.length] loadedFlags = false;
         }
     }
@@ -153,6 +129,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
             }
         }
 
+        /// Manually increment reference.
         static void incref(ID id) @nogc nothrow
         in { assert(isValidID(id)); }
         out { assert(referenceCounts[id] > 0); }
@@ -161,6 +138,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
             referenceCounts[id]++;
         }
 
+        /// Manually decrement reference.
         static void unref(ID id)
         in { assert(isValidID(id)); }
         do
@@ -176,6 +154,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
+    /// Get the Flyweight instance for object identified by `id`, constructing it if not loaded yet.
     static Flyweight get(ID id)
     in { assert(isValidID(id)); }
     out { assert(isLoaded(id)); }
@@ -190,6 +169,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         return Flyweight(id, knownObjects[id]);
     }
 
+    /// Returns if Flyweight identified by `id` is loaded of not.
     static bool isLoaded(ID id) @nogc nothrow
     in { assert(isValidID(id)); }
     do
@@ -204,6 +184,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
+    /// If Flyweight identified by `id` is loaded, manually unload it and reset reference count/loaded flag.
     static void unload(ID id)
     in { assert(isValidID(id)); }
     do
@@ -222,6 +203,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
+    /// Manually unload all loaded instances and reset reference counts/loaded flags.
     static void unloadAll()
     out {
         import std.traits : EnumMembers;
@@ -243,6 +225,42 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     {
         mixin("static Flyweight " ~ normalizeName!name ~ "() { return get(ID." ~ normalizeName!name ~ "); }");
     }
+}
+
+// Private compile-time helpers
+private template normalizeName(string name)
+{
+    private string _normalizeName()
+    {
+        import std.ascii : isAlphaNum, isDigit;
+        string result;
+        foreach (c; name)
+        {
+            result ~= (isAlphaNum(c) || c == '_') ? c : '_';
+        }
+        if (isDigit(result[0]))
+        {
+            result = '_' ~ result;
+        }
+        return result;
+    }
+
+    enum normalizeName = _normalizeName();
+}
+
+private template joinNames(string[] names)
+{
+    private string _joinNames()
+    {
+        string result;
+        static foreach (n; names)
+        {
+            result ~= normalizeName!n ~ ", ";
+        }
+        return result;
+    }
+
+    enum joinNames = _joinNames();
 }
 
 version (unittest)
