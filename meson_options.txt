@@ -1,3 +1,0 @@
-option('global_storage', type: 'boolean', value: false,
-  description: 'Use global storage (__gshared) instead of thread local storage'
-)

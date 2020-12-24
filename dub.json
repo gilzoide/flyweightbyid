@@ -10,17 +10,8 @@
 			"name": "library"
 		},
 		{
-			"name": "gshared",
-			"versions": ["GlobalStorage"]
-		},
-		{
 			"name": "betterC",
 			"buildOptions": ["betterC"]
-		},
-		{
-			"name": "gshared-betterC",
-			"buildOptions": ["betterC"],
-			"versions": ["GlobalStorage"]
 		}
 	]
 }

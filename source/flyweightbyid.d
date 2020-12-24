@@ -1,41 +1,64 @@
 import std.traits : isCallable;
 
-private template joinNames(string[] names)
+private template normalizeName(string name)
 {
-    private string _joinNames(string[] names)
+    private string _normalizeName()
     {
+        import std.ascii : isAlphaNum, isDigit;
         string result;
-        foreach (n; names)
+        foreach (c; name)
         {
-            result ~= n ~ ", ";
+            result ~= (isAlphaNum(c) || c == '_') ? c : '_';
+        }
+        if (isDigit(result[0]))
+        {
+            result = '_' ~ result;
         }
         return result;
     }
 
-    enum joinNames = _joinNames(names);
+    enum normalizeName = _normalizeName();
 }
 
-struct Flyweight(T, alias makeFunc, alias disposeFunc, Names...)
+private template joinNames(string[] names)
+{
+    private string _joinNames()
+    {
+        string result;
+        static foreach (n; names)
+        {
+            result ~= normalizeName!n ~ ", ";
+        }
+        return result;
+    }
+
+    enum joinNames = _joinNames();
+}
+
+enum FlyweightOptions
+{
+    none = 0,
+    gshared = 1 << 0,
+}
+
+struct Flyweight(T, alias makeFunc, alias disposeFunc, alias _names, const FlyweightOptions options = FlyweightOptions.none)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
-    static if (Names.length == 1 && !is(typeof(Names[0]) == string))
+    static if (is(_names == enum))
     {
-        static if (is(Names[0] == enum))
-        {
-            import std.algorithm : map;
-            import std.array : array;
-            import std.conv : to;
-            import std.traits : EnumMembers;
-            private enum string[] names = [EnumMembers!(Names[0])].map!(to!string).array;
-        }
-        else
-        {
-            private enum string[] names = Names[0];
-        }
+        import std.algorithm : map;
+        import std.array : array;
+        import std.conv : to;
+        import std.traits : EnumMembers;
+        private enum string[] names = [EnumMembers!(_names)].map!(to!string).array;
+    }
+    else static if (is(typeof(_names) == string))
+    {
+        private enum string[] names = [_names];
     }
     else
     {
-        private enum string[] names = [Names];
+        private enum string[] names = _names;
     }
 
     mixin("enum ID : uint "
@@ -95,7 +118,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
-    version (GlobalStorage)
+    static if (options & FlyweightOptions.gshared)
     {
         __gshared private T[names.length] knownObjects;
         __gshared private uint[names.length] referenceCounts = 0;
@@ -150,7 +173,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
 
     static foreach (name; names)
     {
-        mixin("static Flyweight " ~ name ~ "() { return get(ID." ~ name ~ "); }");
+        mixin("static Flyweight " ~ normalizeName!name ~ "() { return get(ID." ~ normalizeName!name ~ "); }");
     }
 }
 
@@ -221,7 +244,7 @@ unittest
 unittest
 {
     // names passed directly
-    alias ABCFlyweight = Flyweight!(string, makeName, disposeName, "A", "B", "C", "D", "None");
+    alias ABCFlyweight = Flyweight!(string, makeName, disposeName, ["A", "B", "C", "D", "None"]);
     assert(__traits(hasMember, ABCFlyweight, "A"));
     assert(__traits(hasMember, ABCFlyweight.ID, "A"));
     assert(__traits(hasMember, ABCFlyweight, "B"));
@@ -233,7 +256,19 @@ unittest
     assert(__traits(hasMember, ABCFlyweight, "None"));
     assert(__traits(hasMember, ABCFlyweight.ID, "None"));
 
-    alias SingletonFlyweight = Flyweight!(string, makeName, disposeName, "instance");
+    alias SingletonFlyweight = Flyweight!(string, makeName, disposeName, "instance", FlyweightOptions.gshared);
     assert(__traits(hasMember, SingletonFlyweight, "instance"));
     assert(__traits(hasMember, SingletonFlyweight.ID, "instance"));
+}
+
+unittest
+{
+    // names with invalid identifier chars
+    alias MyFlyweight = Flyweight!(string, makeName, disposeName, ["First ID", "Second!", "123"]);
+    assert(__traits(hasMember, MyFlyweight, "First_ID"));
+    assert(__traits(hasMember, MyFlyweight.ID, "First_ID"));
+    assert(__traits(hasMember, MyFlyweight, "Second_"));
+    assert(__traits(hasMember, MyFlyweight.ID, "Second_"));
+    assert(__traits(hasMember, MyFlyweight, "_123"));
+    assert(__traits(hasMember, MyFlyweight.ID, "_123"));
 }
