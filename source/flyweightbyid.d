@@ -296,8 +296,10 @@ version (unittest)
         "three",
     ];
     string makeName(uint id)
+    in { assert(id < names.length); }
+    do
     {
-        return id < names.length ? names[id] : null;
+        return names[id];
     }
     void disposeName(ref string name)
     {
