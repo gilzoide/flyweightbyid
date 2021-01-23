@@ -195,9 +195,24 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         }
     }
 
+    /// Returns whether there are any Flyweight instances loaded.
+    static bool isAnyLoaded() @nogc nothrow
+    {
+        import std.algorithm : any;
+        static if (shouldCountReferences)
+        {
+            return any!"a > 0"(referenceCounts[]);
+        }
+        else
+        {
+            return any(loadedFlags[]);
+        }
+    }
+
     /// If Flyweight identified by `id` is loaded, manually unload it and reset reference count/loaded flag.
     static void unload(ID id)
     in { assert(isValidID(id)); }
+    out { assert(!isLoaded(id)); }
     do
     {
         if (isLoaded(id))
@@ -221,6 +236,7 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
         {
             assert(!isLoaded(id));
         }
+        assert(!isAnyLoaded);
     }
     do
     {
@@ -312,11 +328,13 @@ unittest
         assert(one1.object is one2.object);
         assert(one2.object is one3.object);
         assert(one1.object is one3.object);
+        assert(NameFlyweight.isAnyLoaded());
     }
 
     assert(!NameFlyweight.isLoaded(NameFlyweight.ID.one));
     assert(!NameFlyweight.isLoaded(NameFlyweight.ID.two));
     assert(!NameFlyweight.isLoaded(NameFlyweight.ID.three));
+    assert(!NameFlyweight.isAnyLoaded());
 }
 
 unittest
