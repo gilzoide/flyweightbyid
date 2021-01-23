@@ -1,3 +1,5 @@
+module flyweightbyid;
+
 import std.traits : isCallable;
 
 /// Options for Flyweight instances.
@@ -24,21 +26,20 @@ enum FlyweightOptions
 struct Flyweight(T, alias makeFunc, alias disposeFunc, alias idNames, const FlyweightOptions options = FlyweightOptions.none)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
+    import std.conv : to;
+    import std.range : isInputRange;
+    import std.traits : EnumMembers;
     static if (is(idNames == enum))
     {
-        import std.algorithm : map;
-        import std.array : array;
-        import std.conv : to;
-        import std.traits : EnumMembers;
-        private enum string[] names = [EnumMembers!(idNames)].map!(to!string).array;
+        private enum string[] names = [EnumMembers!(idNames)].to!(string[]);
     }
-    else static if (is(typeof(idNames) == string))
+    else static if (is(typeof(idNames) : string))
     {
         private enum string[] names = [idNames];
     }
     else
     {
-        private enum string[] names = idNames;
+        private enum string[] names = idNames.to!(string[]);
     }
     private enum gshared = options & FlyweightOptions.gshared;
     private enum shouldCountReferences = !(options & FlyweightOptions.noReferenceCount);
@@ -216,7 +217,6 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     /// Manually unload all loaded instances and reset reference counts/loaded flags.
     static void unloadAll()
     out {
-        import std.traits : EnumMembers;
         foreach (id; EnumMembers!(ID)[0 .. $-1])
         {
             assert(!isLoaded(id));
@@ -224,7 +224,6 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
     }
     do
     {
-        import std.traits : EnumMembers;
         foreach (id; EnumMembers!(ID)[0 .. $-1])
         {
             unload(id);
