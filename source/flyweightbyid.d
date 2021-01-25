@@ -26,21 +26,8 @@ enum FlyweightOptions
 struct Flyweight(T, alias makeFunc, alias disposeFunc, alias idNames, const FlyweightOptions options = FlyweightOptions.none)
 if (isCallable!makeFunc && isCallable!disposeFunc)
 {
-    import std.conv : to;
-    import std.range : isInputRange;
     import std.traits : EnumMembers;
-    static if (is(idNames == enum))
-    {
-        private enum string[] names = [EnumMembers!(idNames)].to!(string[]);
-    }
-    else static if (is(typeof(idNames) : string))
-    {
-        private enum string[] names = [idNames];
-    }
-    else
-    {
-        private enum string[] names = idNames.to!(string[]);
-    }
+    private enum names = getNames!(idNames);
     private enum gshared = options & FlyweightOptions.gshared;
     private enum shouldCountReferences = !(options & FlyweightOptions.noReferenceCount);
 
@@ -253,6 +240,42 @@ if (isCallable!makeFunc && isCallable!disposeFunc)
 }
 
 // Private compile-time helpers
+private template getNames(alias idNames)
+{
+    import std.conv : to;
+    import std.range : isInputRange;
+    import std.traits : EnumMembers;
+    static if (is(idNames == enum))
+    {
+        enum string[] getNames = [EnumMembers!(idNames)].to!(string[]);
+    }
+    else
+    {
+        private alias idNamesType = typeof(idNames);
+        static if (is(idNamesType : string))
+        {
+            enum string[] getNames = [idNames];
+        }
+        else static if (isInputRange!(idNamesType) && !is(idNamesType : string[]))
+        {
+            static if (__traits(compiles, { import std.array : staticArray; }))
+            {
+                import std.array : staticArray;
+                enum string[] getNames = staticArray!(idNames);
+            }
+            else
+            {
+                import std.array : array;
+                enum string[] getNames = idNames.array;
+            }
+        }
+        else
+        {
+            enum string[] getNames = idNames;
+        }
+    }
+}
+
 private template normalizeName(string name)
 {
     private string _normalizeName()
@@ -390,6 +413,14 @@ unittest
     ABCFlyweight.unload(ABCFlyweight.ID.A);
     assert(!ABCFlyweight.isLoaded(ABCFlyweight.ID.A));
     ABCFlyweight.unloadAll();
+}
+
+unittest
+{
+    import std.algorithm : map;
+    import std.conv : to;
+    import std.range : iota;
+    alias NFlyweight = Flyweight!(string, makeName, disposeName, iota(3).map!(to!string));
 }
 
 version (unittest)
